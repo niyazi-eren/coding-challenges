@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -21,7 +22,7 @@ func main() {
 	}
 
 	opt := os.Args[2]
-	if opt != "-c" {
+	if opt != "-c" && opt != "-l" {
 		usage()
 	}
 
@@ -34,13 +35,38 @@ func main() {
 	}
 	defer file.Close()
 
-	nbytes, err := countBytes(file)
-	if err != nil {
-		fmt.Printf("Error reading file: %v\n", err)
-		return
+	if opt == "-c" {
+		nbytes, err := countBytes(file)
+		if err != nil {
+			fmt.Printf("Error reading file: %v\n", err)
+			return
+		}
+		fmt.Println(nbytes, fileName)
 	}
 
-	fmt.Println(nbytes, fileName)
+	if opt == "-l" {
+		nlines, err := countLines(file)
+		if err != nil {
+			fmt.Printf("Error reading file: %v\n", err)
+			return
+		}
+		fmt.Println(nlines, fileName)
+	}
+}
+
+func countLines(file *os.File) (int, error) {
+	scanner := bufio.NewScanner(file)
+	numLines := 0
+	for scanner.Scan() {
+		scanner.Text()
+		numLines++
+	}
+
+	if err := scanner.Err(); err != nil {
+		return 0, err
+	}
+
+	return numLines, nil
 }
 
 func countBytes(file *os.File) (int, error) {
@@ -61,5 +87,5 @@ func countBytes(file *os.File) (int, error) {
 }
 
 func usage() {
-	panic("Usage: ccwc -c <file>")
+	panic("Usage: ccwc [-c | -l] <file>")
 }
