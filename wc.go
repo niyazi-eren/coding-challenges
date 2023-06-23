@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 const (
@@ -12,63 +13,65 @@ const (
 )
 
 func main() {
-	if len(os.Args) != 4 {
+	numArgs := len(os.Args)
+	if numArgs != 3 && numArgs != 4 {
 		usage()
+		return
 	}
 
 	cmd := os.Args[1]
 	if cmd != "ccwc" {
 		usage()
+		return
 	}
 
-	opt := os.Args[2]
-	if opt != "-c" && opt != "-l" && opt != "-w" && opt != "-m" {
-		usage()
-	}
-
-	fileName := os.Args[3]
-
+	fileName := parseFileName(os.Args)
 	file, err := os.Open(fileName)
 	if err != nil {
 		fmt.Printf("Error opening file: %v\n", err)
 		return
 	}
-	defer file.Close()
 
-	if opt == "-c" {
-		nbytes, err := countBytes(file)
-		if err != nil {
-			fmt.Printf("Error reading file: %v\n", err)
-			return
-		}
+	opt := parseOptions(os.Args)
+	switch opt {
+	case "c":
+		nbytes, _ := countBytes(file)
 		fmt.Println(nbytes, fileName)
-	}
-
-	if opt == "-l" {
-		nlines, err := countLines(file)
-		if err != nil {
-			fmt.Printf("Error reading file: %v\n", err)
-			return
-		}
+	case "l":
+		nlines, _ := countLines(file)
 		fmt.Println(nlines, fileName)
-	}
-
-	if opt == "-w" {
-		nwords, err := countWords(file)
-		if err != nil {
-			fmt.Printf("Error reading file: %v\n", err)
-			return
-		}
+	case "w":
+		nwords, _ := countWords(file)
 		fmt.Println(nwords, fileName)
-	}
-
-	if opt == "-m" {
-		nchars, err := countChars(file)
-		if err != nil {
-			fmt.Printf("Error reading file: %v\n", err)
-			return
-		}
+	case "m":
+		nchars, _ := countChars(file)
 		fmt.Println(nchars, fileName)
+	case "":
+		nlines, _ := countLines(file)
+		nbytes, _ := countBytes(file)
+		nwords, _ := countWords(file)
+		fmt.Println(nlines, nbytes, nwords, fileName)
+	default:
+		usage()
+	}
+	defer file.Close()
+}
+
+func parseOptions(args []string) string {
+	if len(args) == 3 {
+		return ""
+	} else {
+		opt := args[2]
+		// get chars after the -
+		return strings.Split(opt, "-")[1]
+	}
+}
+
+func parseFileName(args []string) string {
+	if len(args) == 3 {
+		return args[2]
+	} else {
+		return args[3]
 	}
 }
 
@@ -83,7 +86,7 @@ func countLines(file *os.File) (int, error) {
 	if err := scanner.Err(); err != nil {
 		return 0, err
 	}
-
+	file.Seek(0, 0)
 	return numLines, nil
 }
 
@@ -100,7 +103,7 @@ func countChars(file *os.File) (int, error) {
 	if err := scanner.Err(); err != nil {
 		return 0, err
 	}
-
+	file.Seek(0, 0)
 	return numChars, nil
 }
 
@@ -117,7 +120,7 @@ func countWords(file *os.File) (int, error) {
 	if err := scanner.Err(); err != nil {
 		return 0, err
 	}
-
+	file.Seek(0, 0)
 	return numWords, nil
 }
 
@@ -135,6 +138,7 @@ func countBytes(file *os.File) (int, error) {
 		}
 		totalBytes += bytesRead
 	}
+	file.Seek(0, 0)
 	return totalBytes, nil
 }
 
