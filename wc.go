@@ -25,8 +25,7 @@ func main() {
 		return
 	}
 
-	fileName := parseFileName(os.Args)
-	file, err := os.Open(fileName)
+	file, err := openFile(os.Args)
 	if err != nil {
 		fmt.Printf("Error opening file: %v\n", err)
 		return
@@ -36,42 +35,69 @@ func main() {
 	switch opt {
 	case "c":
 		nbytes, _ := countBytes(file)
-		fmt.Println(nbytes, fileName)
+		fmt.Println(nbytes, file.Name())
 	case "l":
 		nlines, _ := countLines(file)
-		fmt.Println(nlines, fileName)
+		fmt.Println(nlines, file.Name())
 	case "w":
 		nwords, _ := countWords(file)
-		fmt.Println(nwords, fileName)
+		fmt.Println(nwords, file.Name())
 	case "m":
 		nchars, _ := countChars(file)
-		fmt.Println(nchars, fileName)
+		fmt.Println(nchars, file.Name())
 	case "":
 		nlines, _ := countLines(file)
 		nbytes, _ := countBytes(file)
 		nwords, _ := countWords(file)
-		fmt.Println(nlines, nbytes, nwords, fileName)
+		fmt.Println(nlines, nbytes, nwords, file.Name())
 	default:
 		usage()
 	}
-	defer file.Close()
+	defer cleanup(file)
 }
 
-func parseOptions(args []string) string {
-	if len(args) == 3 {
-		return ""
-	} else {
-		opt := args[2]
-		// get chars after the -
-		return strings.Split(opt, "-")[1]
+func cleanup(file *os.File) {
+	file.Close()
+	if file.Name() == "tmp.txt" {
+		err := os.Remove(file.Name())
+		if err != nil {
+			fmt.Println("Error deleting file:", err)
+			return
+		}
 	}
 }
 
-func parseFileName(args []string) string {
-	if len(args) == 3 {
-		return args[2]
+func parseOptions(args []string) string {
+	if len(args) == 3 && args[2][0] == '-' {
+		opt := args[2]
+		return strings.Split(opt, "-")[1]
+	} else if len(args) == 4 {
+		opt := args[2]
+		return strings.Split(opt, "-")[1]
 	} else {
-		return args[3]
+		return ""
+	}
+}
+
+func openFile(args []string) (*os.File, error) {
+	if len(args) == 3 && args[2][0] != '-' {
+		fileName := args[2]
+		return os.Open(fileName)
+	} else if len(args) == 4 {
+		fileName := args[3]
+		return os.Open(fileName)
+	} else {
+		// input file case
+		scanner := bufio.NewScanner(os.Stdin)
+		tmpFile, _ := os.OpenFile("tmp.txt", os.O_APPEND|os.O_CREATE, 0644)
+
+		for scanner.Scan() {
+			input := scanner.Text()
+			tmpFile.WriteString(input + "\n")
+		}
+
+		tmpFile.Seek(0, 0)
+		return tmpFile, nil
 	}
 }
 
