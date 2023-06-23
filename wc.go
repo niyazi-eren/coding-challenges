@@ -22,7 +22,7 @@ func main() {
 	}
 
 	opt := os.Args[2]
-	if opt != "-c" && opt != "-l" && opt != "-w" {
+	if opt != "-c" && opt != "-l" && opt != "-w" && opt != "-m" {
 		usage()
 	}
 
@@ -61,6 +61,15 @@ func main() {
 		}
 		fmt.Println(nwords, fileName)
 	}
+
+	if opt == "-m" {
+		nchars, err := countChars(file)
+		if err != nil {
+			fmt.Printf("Error reading file: %v\n", err)
+			return
+		}
+		fmt.Println(nchars, fileName)
+	}
 }
 
 func countLines(file *os.File) (int, error) {
@@ -76,6 +85,23 @@ func countLines(file *os.File) (int, error) {
 	}
 
 	return numLines, nil
+}
+
+func countChars(file *os.File) (int, error) {
+	scanner := bufio.NewScanner(file)
+	scanner.Split(bufio.ScanBytes)
+
+	numChars := 0
+	for scanner.Scan() {
+		scanner.Text()
+		numChars++
+	}
+
+	if err := scanner.Err(); err != nil {
+		return 0, err
+	}
+
+	return numChars, nil
 }
 
 func countWords(file *os.File) (int, error) {
@@ -113,5 +139,5 @@ func countBytes(file *os.File) (int, error) {
 }
 
 func usage() {
-	panic("Usage: ccwc [-clw] <file>")
+	panic("Usage: ccwc [-clwm] <file>")
 }

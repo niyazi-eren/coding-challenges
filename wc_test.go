@@ -30,3 +30,11 @@ func TestStepThree(t *testing.T) {
 		t.Errorf("result is %d words; expected %d", result, expected)
 	}
 }
+
+func TestStepFour(t *testing.T) {
+	result, _ := countChars(testFile)
+	expected := 341836
+	if result != expected {
+		t.Errorf("result is %d chars; expected %d", result, expected)
+	}
+}
