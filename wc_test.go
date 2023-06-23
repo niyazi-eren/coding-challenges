@@ -22,3 +22,11 @@ func TestStepTwo(t *testing.T) {
 		t.Errorf("result is %d lines; expected %d", result, expected)
 	}
 }
+
+func TestStepThree(t *testing.T) {
+	result, _ := countWords(testFile)
+	expected := 58159
+	if result != expected {
+		t.Errorf("result is %d words; expected %d", result, expected)
+	}
+}
