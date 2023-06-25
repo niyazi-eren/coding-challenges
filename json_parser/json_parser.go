@@ -29,7 +29,7 @@ func isValidJsonFile(fileName string) bool {
 }
 
 func isSpecialToken(token string) bool {
-	values := []string{kvDelim, start, end, elementDelim}
+	values := []string{kvDelim, start, end, elementDelim, arrayStart, arrayEnd}
 	for _, val := range values {
 		if token == val {
 			return true
@@ -100,6 +100,8 @@ func tokenize(fileName string) []string {
 
 	var tokens = make([]string, 0, 100)
 	parsingString := false
+	firstStart := true
+	parsingInnerObject := false
 	reader := bufio.NewReader(file)
 
 	token := ""
@@ -114,8 +116,18 @@ func tokenize(fileName string) []string {
 			break
 		}
 
-		// handle key value pairs for string type
-		if char == stringDelim && !parsingString {
+		if parsingInnerObject == true {
+			if char == end {
+				parsingInnerObject = false
+				token += char
+				tokens = append(tokens, token)
+				token = ""
+			} else if char == space || char == newLine {
+				continue
+			} else {
+				token += char
+			}
+		} else if char == stringDelim && !parsingString {
 			parsingString = true
 			token += stringDelim
 			continue
@@ -133,11 +145,20 @@ func tokenize(fileName string) []string {
 		} else if !isSpecialToken(char) {
 			token += char
 		} else if isSpecialToken(char) {
-			if token != "" {
+			// if first start
+			if char == start && firstStart {
+				tokens = append(tokens, char)
+				firstStart = false
+			} else if char == start && !firstStart {
+				parsingInnerObject = true
+				token += char
+			} else if token != "" {
 				tokens = append(tokens, token)
 				token = ""
+				tokens = append(tokens, char)
+			} else {
+				tokens = append(tokens, char)
 			}
-			tokens = append(tokens, char)
 		}
 	}
 	return tokens
