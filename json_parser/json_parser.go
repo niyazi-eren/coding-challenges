@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"unicode"
 )
 
@@ -21,11 +22,27 @@ const (
 )
 
 func isValidJsonFile(fileName string) bool {
-	tokens := tokenize(fileName)
+	content := getContent(fileName)
+	tokens := tokenize(content)
 	return len(tokens) >= 2 &&
 		tokens[0] == start &&
 		tokens[len(tokens)-1] == end &&
 		isValidKeyValuePair(tokens)
+}
+
+func getContent(fileName string) string {
+	content := ""
+	file, err := os.Open(fileName)
+	if err != nil {
+		fmt.Printf("Error opening file: %v\n", err)
+		return ""
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		content += scanner.Text()
+	}
+	return content
 }
 
 func isSpecialToken(token string) bool {
@@ -55,8 +72,23 @@ func isValidValue(token string) bool {
 	}
 	// case number
 	if unicode.IsDigit(rune(token[0])) {
+		if string(token[0]) == "0" {
+			return false
+		}
 		_, err := strconv.Atoi(token)
 		return err == nil
+	}
+
+	// case array
+	if string(token[0]) == arrayStart && string(token[len(token)-1]) == arrayEnd {
+		// split array by values
+		values := strings.Split(token[1:len(token)-1], elementDelim)
+		for _, value := range values {
+			if value != "" && !(isValidValue(value)) {
+				return false
+			}
+		}
+		return true
 	}
 
 	return isBoolean(token) || isNull(token)
@@ -82,7 +114,9 @@ func isValidKeyValuePair(tokens []string) bool {
 			(i%4 == 2 && (tokens[i] != kvDelim)) ||
 
 			// validate value
-			(i%4 == 3 && !isValidValue(tokens[i])) ||
+			// check if is an inner object
+			(i%4 == 3 && (string(tokens[i][0]) == start) && !isValidKeyValuePair(tokenize(tokens[i]))) ||
+			(i%4 == 3 && (string(tokens[i][0]) != start) && !isValidValue(tokens[i])) ||
 
 			// validate element delimiter
 			(i%4 == 0 && tokens[i] != elementDelim) ||
@@ -94,27 +128,16 @@ func isValidKeyValuePair(tokens []string) bool {
 	return true
 }
 
-func tokenize(fileName string) []string {
-	file, _ := os.Open(fileName)
-	defer file.Close()
-
+func tokenize(content string) []string {
 	var tokens = make([]string, 0, 100)
 	parsingString := false
 	firstStart := true
 	parsingInnerObject := false
-	reader := bufio.NewReader(file)
+	parsingArray := false
 
 	token := ""
-	for {
-		ch, _, err := reader.ReadRune()
+	for _, ch := range content {
 		char := string(ch)
-
-		if err != nil && err.Error() != "EOF" {
-			fmt.Println("Error reading file:", err)
-		}
-		if err != nil && err.Error() == "EOF" {
-			break
-		}
 
 		if parsingInnerObject == true {
 			if char == end {
@@ -124,6 +147,15 @@ func tokenize(fileName string) []string {
 				token = ""
 			} else if char == space || char == newLine {
 				continue
+			} else {
+				token += char
+			}
+		} else if parsingArray {
+			if char == arrayEnd {
+				parsingArray = false
+				token += char
+				tokens = append(tokens, token)
+				token = ""
 			} else {
 				token += char
 			}
@@ -151,6 +183,9 @@ func tokenize(fileName string) []string {
 				firstStart = false
 			} else if char == start && !firstStart {
 				parsingInnerObject = true
+				token += char
+			} else if char == arrayStart {
+				parsingArray = true
 				token += char
 			} else if token != "" {
 				tokens = append(tokens, token)
