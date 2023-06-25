@@ -51,3 +51,19 @@ func TestStepTwoInvalid2(t *testing.T) {
 		t.Errorf("result is %v; expected %v", result, expected)
 	}
 }
+
+func TestStepThreeValid(t *testing.T) {
+	result := isValidJsonFile("tests/step3/valid.json")
+	expected := true
+	if result != expected {
+		t.Errorf("result is %v; expected %v", result, expected)
+	}
+}
+
+func TestStepThreeInvalid(t *testing.T) {
+	result := isValidJsonFile("tests/step3/invalid.json")
+	expected := false
+	if result != expected {
+		t.Errorf("result is %v; expected %v", result, expected)
+	}
+}
