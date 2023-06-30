@@ -1,93 +1,65 @@
 package json_parser
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 )
 
-func TestStepOneValid(t *testing.T) {
-	result := isValidJsonFile("tests/step1/valid.json")
-	expected := true
-	if result != expected {
-		t.Errorf("result is %v; expected %v", result, expected)
+func TestStepOne(t *testing.T) {
+	fileNames := []string{"tests/step1/valid.json", "tests/step1/invalid.json"}
+	for _, fileName := range fileNames {
+		assertValidate(t, fileName)
 	}
 }
 
-func TestStepOneInvalid(t *testing.T) {
-	result := isValidJsonFile("tests/step1/invalid.json")
-	expected := false
-	if result != expected {
-		t.Errorf("result is %v; expected %v", result, expected)
+func TestStepTwo(t *testing.T) {
+	fileNames := []string{"tests/step2/valid.json",
+		"tests/step2/valid2.json",
+		"tests/step2/invalid.json",
+		"tests/step2/invalid2.json"}
+	for _, fileName := range fileNames {
+		assertValidate(t, fileName)
 	}
 }
 
-func TestStepTwoValid(t *testing.T) {
-	result := isValidJsonFile("tests/step2/valid.json")
-	expected := true
-	if result != expected {
-		t.Errorf("result is %v; expected %v", result, expected)
+func TestStepThree(t *testing.T) {
+	fileNames := []string{"tests/step3/valid.json", "tests/step3/invalid.json"}
+	for _, fileName := range fileNames {
+		assertValidate(t, fileName)
 	}
 }
 
-func TestStepTwoValid2(t *testing.T) {
-	result := isValidJsonFile("tests/step2/valid2.json")
-	expected := true
-	if result != expected {
-		t.Errorf("result is %v; expected %v", result, expected)
+func TestStepFour(t *testing.T) {
+	fileNames := []string{"tests/step4/valid.json", "tests/step4/valid2.json", "tests/step4/invalid.json"}
+	for _, fileName := range fileNames {
+		assertValidate(t, fileName)
 	}
 }
 
-func TestStepTwoInvalid(t *testing.T) {
-	result := isValidJsonFile("tests/step2/invalid.json")
-	expected := false
-	if result != expected {
-		t.Errorf("result is %v; expected %v", result, expected)
+func TestStepFivePass(t *testing.T) {
+	for i := 1; i <= 6; i++ {
+		fileName := "tests/step5/pass" + strconv.Itoa(i) + ".json"
+		assertValidate(t, fileName)
 	}
 }
 
-func TestStepTwoInvalid2(t *testing.T) {
-	result := isValidJsonFile("tests/step2/invalid2.json")
-	expected := false
-	if result != expected {
-		t.Errorf("result is %v; expected %v", result, expected)
+func TestStepFiveFail(t *testing.T) {
+	for i := 1; i <= 33; i++ {
+		fileName := "tests/step5/fail" + strconv.Itoa(i) + ".json"
+		assertValidate(t, fileName)
 	}
 }
 
-func TestStepThreeValid(t *testing.T) {
-	result := isValidJsonFile("tests/step3/valid.json")
-	expected := true
-	if result != expected {
-		t.Errorf("result is %v; expected %v", result, expected)
+func assertValidate(t *testing.T, fileName string) {
+	var expected bool
+	if strings.Contains(fileName, "fail") || strings.Contains(fileName, "invalid") {
+		expected = false
+	} else {
+		expected = true
 	}
-}
-
-func TestStepThreeInvalid(t *testing.T) {
-	result := isValidJsonFile("tests/step3/invalid.json")
-	expected := false
+	result := validate(fileName)
 	if result != expected {
-		t.Errorf("result is %v; expected %v", result, expected)
-	}
-}
-
-func TestStepFourValid(t *testing.T) {
-	result := isValidJsonFile("tests/step4/valid.json")
-	expected := true
-	if result != expected {
-		t.Errorf("result is %v; expected %v", result, expected)
-	}
-}
-
-func TestStepFourValid2(t *testing.T) {
-	result := isValidJsonFile("tests/step4/valid2.json")
-	expected := true
-	if result != expected {
-		t.Errorf("result is %v; expected %v", result, expected)
-	}
-}
-
-func TestStepFourInvalid(t *testing.T) {
-	result := isValidJsonFile("tests/step4/invalid.json")
-	expected := false
-	if result != expected {
-		t.Errorf("result is %v; expected %v", result, expected)
+		t.Errorf("result for file %v is %v; expected %v", fileName, result, expected)
 	}
 }
