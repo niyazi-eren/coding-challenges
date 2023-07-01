@@ -35,11 +35,11 @@ func validate(fileName string) bool {
 			return false
 		}
 	} else if char == arrayStart {
-		_, err := parseArray(reader)
+		arrTokens, err := parseArray(reader)
 		if err != nil {
 			return false
 		} else {
-			return true
+			return validateStructure(arrTokens)
 		}
 	}
 	defer file.Close()
@@ -59,7 +59,8 @@ func parseObject(reader *bufio.Reader) ([]string, bool) {
 	// edge case empty object
 	ch, _ := reader.Peek(1)
 	if string(ch) == objectEnd {
-		tokens = append(tokens, objectEnd)
+		chr, _, _ := reader.ReadRune()
+		tokens = append(tokens, string(chr))
 		return tokens, true
 	}
 
@@ -98,19 +99,23 @@ func parseObject(reader *bufio.Reader) ([]string, bool) {
 	}
 }
 
-func parseArray(reader *bufio.Reader) (string, error) {
-	token := arrayStart
+func parseArray(reader *bufio.Reader) ([]string, error) {
+	var tokens = make([]string, 1)
+	tokens[0] = arrayStart
 	for {
-		t, err := parseValue(reader)
+		token, err := parseValue(reader)
 		if err != nil {
-			return token, err
+			return tokens, err
 		}
-		token += t
+		tokens = append(tokens, token)
 
-		t, err = expect([]string{elementDelim, arrayEnd}, reader)
-		token += t
-		if t == arrayEnd {
-			return token, nil
+		token, err = expect([]string{elementDelim, arrayEnd}, reader)
+		tokens = append(tokens, token)
+		if err != nil {
+			return tokens, err
+		}
+		if token == arrayEnd {
+			return tokens, nil
 		}
 	}
 }
@@ -147,14 +152,15 @@ func parseValue(reader *bufio.Reader) (string, error) {
 			}
 			return token, nil
 		case arrayStart:
-			token, err := parseArray(reader)
+			tokens, err := parseArray(reader)
 			if err != nil {
 				return "", err
 			}
+			token := strings.Join(tokens, ", ")
 			return token, nil
 		case objectStart:
 			tokens, success := parseObject(reader)
-			token := strings.Join(tokens, ", ")
+			token := strings.Join(tokens, " ")
 			if !success {
 				return "", errors.New("parseValue: error parsing inner object: " + token)
 			}
