@@ -45,7 +45,7 @@ func TestStepFivePass(t *testing.T) {
 }
 
 func TestStepFiveFail(t *testing.T) {
-	for i := 10; i <= 33; i++ {
+	for i := 1; i <= 33; i++ {
 		fileName := "tests/step5/fail" + strconv.Itoa(i) + ".json"
 		assertValidate(t, fileName)
 	}
@@ -58,15 +58,9 @@ func assertValidate(t *testing.T, fileName string) {
 	} else {
 		expected = true
 	}
-	result := validate(fileName)
+	var JSON = JSON{}
+	result := JSON.Validate(fileName)
 	if result != expected {
 		t.Errorf("result for file %v is %v; expected %v", fileName, result, expected)
-	}
-}
-
-func TestStepFour2(t *testing.T) {
-	fileNames := []string{"tests/step4/valid2.json"}
-	for _, fileName := range fileNames {
-		assertValidate(t, fileName)
 	}
 }

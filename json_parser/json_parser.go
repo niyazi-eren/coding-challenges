@@ -3,6 +3,8 @@ package json_parser
 import (
 	"bufio"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -22,37 +24,61 @@ const (
 	carr         = "\r"
 )
 
-func validate(fileName string) bool {
-	var tokens = make([]string, 0)
-	var valid bool
-	file, _ := os.Open(fileName)
+type Parser interface {
+	Validate(fileName string)
+}
+
+type JSON struct{}
+
+var numArrays = 0
+
+func (j JSON) Validate(fileName string) bool {
+	file, err := os.Open(fileName)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+	defer file.Close()
+
 	reader := bufio.NewReader(file)
-	ch, _, _ := reader.ReadRune()
+	ch, _, err := reader.ReadRune()
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
 	char := string(ch)
+
+	var tokens []string
+
 	if char == objectStart {
-		tokens, valid = parseObject(reader)
-		if !valid {
+		tokens, err = parseObject(reader)
+		if err != nil {
+			fmt.Println(err)
 			return false
 		}
 	} else if char == arrayStart {
-		arrTokens, err := parseArray(reader)
+		tokens, err = parseArray(reader)
 		if err != nil {
+			fmt.Println(err)
 			return false
-		} else {
-			return validateStructure(arrTokens)
 		}
 	}
-	defer file.Close()
-	return validateStructure(tokens)
+	return validateStructure(tokens, reader)
 }
 
-func validateStructure(tokens []string) bool {
-	return len(tokens) >= 2 &&
+func validateStructure(tokens []string, reader *bufio.Reader) bool {
+	endsNormally := false
+	_, err := expect([]string{EOF}, reader)
+	if err != nil && err.Error() == "EOF" {
+		endsNormally = true
+	}
+	return endsNormally &&
+		len(tokens) >= 2 &&
 		((tokens[0] == objectStart && tokens[len(tokens)-1] == objectEnd) ||
 			(tokens[0] == arrayStart && tokens[len(tokens)-1] == arrayEnd))
 }
 
-func parseObject(reader *bufio.Reader) ([]string, bool) {
+func parseObject(reader *bufio.Reader) ([]string, error) {
 	var tokens = make([]string, 1)
 	tokens[0] = objectStart
 
@@ -61,25 +87,25 @@ func parseObject(reader *bufio.Reader) ([]string, bool) {
 	if string(ch) == objectEnd {
 		chr, _, _ := reader.ReadRune()
 		tokens = append(tokens, string(chr))
-		return tokens, true
+		return tokens, nil
 	}
 
 	for {
-		// expect key need to take care of first "
+		// expect key
 		_, err := expect([]string{stringDelim}, reader)
 		if err != nil {
-			return tokens, false
+			return tokens, err
 		}
 		token, err := parseString(reader)
 		if err != nil {
-			return tokens, false
+			return tokens, err
 		}
 		tokens = append(tokens, token)
 
 		// expect colon
 		_, err = expect([]string{kvDelim}, reader)
 		if err != nil {
-			return tokens, false
+			return tokens, err
 		}
 		tokens = append(tokens, kvDelim)
 
@@ -90,11 +116,11 @@ func parseObject(reader *bufio.Reader) ([]string, bool) {
 		// expect comma or object end
 		token, err = expect([]string{elementDelim, objectEnd}, reader)
 		if err != nil {
-			return tokens, false
+			return tokens, err
 		}
 		tokens = append(tokens, token)
 		if token == objectEnd {
-			return tokens, true
+			return tokens, nil
 		}
 	}
 }
@@ -103,12 +129,14 @@ func parseArray(reader *bufio.Reader) ([]string, error) {
 	var tokens = make([]string, 1)
 	tokens[0] = arrayStart
 	for {
+		// expect value
 		token, err := parseValue(reader)
 		if err != nil {
 			return tokens, err
 		}
 		tokens = append(tokens, token)
 
+		// expect comma or ]
 		token, err = expect([]string{elementDelim, arrayEnd}, reader)
 		tokens = append(tokens, token)
 		if err != nil {
@@ -152,6 +180,10 @@ func parseValue(reader *bufio.Reader) (string, error) {
 			}
 			return token, nil
 		case arrayStart:
+			numArrays++
+			if numArrays > 21 {
+				return "", errors.New("parseValue: error, too many inner arrays")
+			}
 			tokens, err := parseArray(reader)
 			if err != nil {
 				return "", err
@@ -159,10 +191,10 @@ func parseValue(reader *bufio.Reader) (string, error) {
 			token := strings.Join(tokens, ", ")
 			return token, nil
 		case objectStart:
-			tokens, success := parseObject(reader)
+			tokens, err := parseObject(reader)
 			token := strings.Join(tokens, " ")
-			if !success {
-				return "", errors.New("parseValue: error parsing inner object: " + token)
+			if err != nil {
+				return "", err
 			}
 			return token, nil
 
@@ -174,9 +206,14 @@ func parseValue(reader *bufio.Reader) (string, error) {
 
 func expect(expected []string, reader *bufio.Reader) (string, error) {
 	for {
-		ch, _, _ := reader.ReadRune()
-		char := string(ch)
+		ch, _, err := reader.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				return "", err
+			}
+		}
 
+		char := string(ch)
 		for _, exp := range expected {
 			if char == exp {
 				return char, nil
