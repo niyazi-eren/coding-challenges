@@ -31,3 +31,16 @@ func BuildFrequencyTable(fileName string) (map[string]int, error) {
 	}
 	return charFrequencyTable, nil
 }
+
+func BuildHuffmanTree(fileName string) (FrequencyTree, error) {
+	charFrequencyTable, err := BuildFrequencyTable(fileName)
+	if err != nil {
+		return FrequencyTree{}, err
+	}
+
+	ft := FrequencyTrees{}
+	for ch, freq := range charFrequencyTable {
+		ft = append(ft, FrequencyTree{letter: ch, frequency: freq})
+	}
+	return ft.BuildHuffmanTree()[0], nil
+}
