@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-var charFrequencyTable = make(map[string]int)
+type PrefixTable = map[string]string
 
 func BuildFrequencyTable(fileName string) (map[string]int, error) {
 	file, err := os.Open(fileName)
@@ -15,6 +15,8 @@ func BuildFrequencyTable(fileName string) (map[string]int, error) {
 	if err != nil {
 		return nil, errors.New("couldn't open file: " + fileName)
 	}
+
+	charFrequencyTable := make(map[string]int)
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -43,4 +45,25 @@ func BuildHuffmanTree(fileName string) (FrequencyTree, error) {
 		ft = append(ft, FrequencyTree{letter: ch, frequency: freq})
 	}
 	return ft.BuildHuffmanTree()[0], nil
+}
+
+func GeneratePrefixCodeTable(fileName string) PrefixTable {
+	huffmanTree, _ := BuildHuffmanTree(fileName)
+	prefixTable := make(map[string]string)
+	TraverseHuffmanTree(huffmanTree, "", &prefixTable)
+	return prefixTable
+}
+
+func TraverseHuffmanTree(huffTree FrequencyTree, code string, prefixTable *map[string]string) {
+	if huffTree.left == nil && huffTree.right == nil {
+		(*prefixTable)[huffTree.letter] = code
+	}
+
+	if huffTree.right != nil {
+		TraverseHuffmanTree(*huffTree.right, code+"1", prefixTable)
+	}
+
+	if huffTree.left != nil {
+		TraverseHuffmanTree(*huffTree.left, code+"0", prefixTable)
+	}
 }
