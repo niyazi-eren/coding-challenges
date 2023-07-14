@@ -16,12 +16,10 @@ func TestFrequencyTreesSort(t *testing.T) {
 
 func TestBuildingHuffmanTree(t *testing.T) {
 	ft := testingFrequencies()
-	ft = ft.BuildHuffmanTree()
-	ftTest := testingHuffmanTree()
-	result := equalTrees(&ft[0], &ftTest)
-	if !result {
-		t.Errorf("expected trees to be equal")
-	}
+	huffTree := ft.BuildHuffmanTree()
+	huffTreeTest := testingHuffmanTree()
+	result := equalTrees(&huffTree[0], &huffTreeTest)
+	assertTrue(t, result, "expected trees to be equal")
 }
 
 func equalTrees(a, b *FrequencyTree) bool {
