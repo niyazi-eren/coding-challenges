@@ -18,21 +18,23 @@ func TestServer_Run(t *testing.T) {
 }
 
 func TestServer_Set(t *testing.T) {
-	cmd := "SET name JOHN"
-	got, err := send(cmd)
-	if err != nil {
-		t.Errorf(err.Error())
-	}
-	want := "OK"
-	if got != want {
-		t.Errorf("got %q, want %q", err, want)
+	tests := []struct {
+		cmd  string
+		want string
+	}{
+		{"SET name JOHN", "OK"},
+		{"SET name JANE", "JOHN"},
 	}
 
-	cmd = "SET name JANE"
-	got, err = send(cmd)
-	want = "JOHN"
-	if got != want {
-		t.Errorf("got %q, want %q", err, want)
+	for _, tt := range tests {
+		got, err := send(tt.cmd)
+		if err != nil {
+			t.Errorf(err.Error())
+		}
+
+		if got != tt.want {
+			t.Errorf("for command %q, got %q, want %q", tt.cmd, got, tt.want)
+		}
 	}
 }
 
@@ -42,23 +44,23 @@ func TestServer_Get(t *testing.T) {
 		t.Errorf(err.Error())
 	}
 
-	got, err := send("GET name")
-	if err != nil {
-		t.Errorf(err.Error())
+	testsGet := []struct {
+		cmd  string
+		want any
+	}{
+		{"GET name", "JOHN"},
+		{"GET doesntexist", nil},
 	}
 
-	want := "JOHN"
-	if got != want {
-		t.Errorf("got %q, want %q", err, want)
-	}
-
-	got, err = send("GET doesntexist")
-	if err != nil {
-		t.Errorf(err.Error())
-	}
-
-	if got != nil {
-		t.Errorf("got %q, want %q", err, want)
+	for _, tt := range testsGet {
+		got, err := send(tt.cmd)
+		if err != nil {
+			t.Errorf(err.Error())
+		} else {
+			if got != tt.want {
+				t.Errorf("got %q, want %q", err, tt.want)
+			}
+		}
 	}
 }
 
