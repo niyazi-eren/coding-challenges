@@ -7,6 +7,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 )
 
 const (
@@ -20,14 +21,15 @@ const (
 )
 
 type Server struct {
+	dict map[string]string
+	mu   sync.Mutex
 	port string
-	m    map[string]string
 }
 
 func NewServer(port string) *Server {
 	return &Server{
 		port: port,
-		m:    make(map[string]string),
+		dict: make(map[string]string),
 	}
 }
 
@@ -49,8 +51,8 @@ func (s *Server) Run() {
 			fmt.Println("Error accepting: ", err.Error())
 			os.Exit(1)
 		}
-		// Handle connections
-		s.handleRequest(conn)
+		// Handle connections concurrently
+		go s.handleRequest(conn)
 	}
 }
 
@@ -98,8 +100,10 @@ func (s *Server) handleRequest(conn net.Conn) {
 func (s *Server) handleSet(reqArgs []string) string {
 	key := reqArgs[1]
 	value := reqArgs[2]
-	oldValue, ok := s.m[key]
-	s.m[key] = value
+	s.mu.Lock()
+	oldValue, ok := s.dict[key]
+	s.dict[key] = value
+	s.mu.Unlock()
 	if ok {
 		sb := strings.Builder{}
 		resp.WriteBulkString(oldValue, &sb)
@@ -112,7 +116,9 @@ func (s *Server) handleSet(reqArgs []string) string {
 // bulk string reply
 func (s *Server) handleGet(reqArgs []string) string {
 	key := reqArgs[1]
-	val, ok := s.m[key]
+	s.mu.Lock()
+	val, ok := s.dict[key]
+	defer s.mu.Unlock()
 	if !ok {
 		return resp.NullBulkString
 	} else {
