@@ -19,8 +19,10 @@ const (
 )
 
 const (
-	SET = "SET"
-	GET = "GET"
+	SET    = "SET"
+	GET    = "GET"
+	EXISTS = "EXISTS"
+	DEL    = "DEL"
 )
 
 const (
@@ -113,6 +115,10 @@ func (s *Server) handleRequest(conn net.Conn) {
 		if err != nil {
 			panic(err)
 		}
+	case EXISTS:
+		reply = s.handleExists(reqArgs)
+	case DEL:
+		reply = s.handleDelete(reqArgs)
 	}
 
 	_, err = conn.Write([]byte(reply)) // write back the response
@@ -122,13 +128,37 @@ func (s *Server) handleRequest(conn net.Conn) {
 	conn.Close() // Close the connection when done
 }
 
+// returns the number of keys deleted as a resp integer
+func (s *Server) handleDelete(args []string) string {
+	count := 0
+	for i := 1; i < len(args); i++ {
+		key := args[i]
+		if _, exists := s.dict[key]; exists {
+			delete(s.dict, key)
+			count++
+		}
+	}
+	return fmt.Sprintf("%s%d%s", resp.Integers, count, resp.CRLF)
+}
+
+// returns the count of existing keys as a resp integer
+func (s *Server) handleExists(args []string) string {
+	count := 0
+	for i := 1; i < len(args); i++ {
+		if _, exists := s.dict[args[i]]; exists {
+			count++
+		}
+	}
+	return fmt.Sprintf("%s%d%s", resp.Integers, count, resp.CRLF)
+}
+
 // returns simple string for OK
 // returns bulk string for old value
-func (s *Server) handleSet(reqArgs []string) (string, error) {
-	key := reqArgs[1]
-	redisValue := RedisValue{value: reqArgs[2]}
+func (s *Server) handleSet(args []string) (string, error) {
+	key := args[1]
+	redisValue := RedisValue{value: args[2]}
 
-	err := setExpiration(reqArgs, &redisValue)
+	err := setExpiration(args, &redisValue)
 	if err != nil {
 		return "", err
 	}
@@ -146,11 +176,11 @@ func (s *Server) handleSet(reqArgs []string) (string, error) {
 	}
 }
 
-func setExpiration(reqArgs []string, redisValue *RedisValue) error {
-	if len(reqArgs) == 5 {
+func setExpiration(args []string, redisValue *RedisValue) error {
+	if len(args) == 5 {
 		exp := Expiration{
-			option:  reqArgs[3],
-			timeout: reqArgs[4],
+			option:  args[3],
+			timeout: args[4],
 			time:    strconv.FormatInt(time.Now().Unix(), 10),
 		}
 		if isValidExpiration(exp) {
@@ -163,8 +193,8 @@ func setExpiration(reqArgs []string, redisValue *RedisValue) error {
 }
 
 // bulk string reply
-func (s *Server) handleGet(reqArgs []string) (string, error) {
-	key := reqArgs[1]
+func (s *Server) handleGet(args []string) (string, error) {
+	key := args[1]
 	s.mu.Lock()
 	val, ok := s.dict[key]
 	defer s.mu.Unlock()

@@ -95,6 +95,35 @@ func TestServer_SetExpire(t *testing.T) {
 	}
 }
 
+func TestServer_Exists_Del(t *testing.T) {
+	_, err := send("SET name JOHN")
+	if err != nil {
+		t.Errorf(err.Error())
+	}
+
+	tests := []struct {
+		cmd  string
+		want any
+	}{
+		{"EXISTS fail", 0},
+		{"EXISTS fail name name", 2},
+		{"DEL name name", 1},
+		{"DEL fail", 0},
+		{"EXISTS name", 0},
+	}
+
+	for _, tt := range tests {
+		got, err := send(tt.cmd)
+		if err != nil {
+			t.Errorf(err.Error())
+		} else {
+			if got != tt.want {
+				t.Errorf("got %q, want %q", err, tt.want)
+			}
+		}
+	}
+}
+
 // executed before every test
 func init() {
 	s := server.NewServer("8888")
