@@ -25,6 +25,8 @@ const (
 	DEL    = "DEL"
 	INCR   = "INCR"
 	DECR   = "DECR"
+	LPUSH  = "LPUSH"
+	RPUSH  = "RPUSH"
 )
 
 const (
@@ -35,7 +37,7 @@ const (
 )
 
 type RedisValue struct {
-	value string
+	value any
 	exp   Expiration
 }
 
@@ -125,6 +127,10 @@ func (s *Server) handleRequest(conn net.Conn) {
 		reply = s.handleIncrDecr(reqArgs, true)
 	case DECR:
 		reply = s.handleIncrDecr(reqArgs, false)
+	case RPUSH:
+		reply = s.handleRPush(reqArgs)
+	case LPUSH:
+		reply = s.handleLPush(reqArgs)
 	}
 
 	_, err = conn.Write([]byte(reply)) // write back the response
@@ -132,6 +138,57 @@ func (s *Server) handleRequest(conn net.Conn) {
 		fmt.Println("error writing response: " + reply)
 	}
 	conn.Close() // Close the connection when done
+}
+
+// Returns Integer reply: the length of the list after the push operations.
+func (s *Server) handleLPush(args []string) string {
+	key := args[1]
+	redisVal, exists := s.dict[key]
+	//If key does not exist, it is created as empty list
+	if !exists {
+		redisVal.value = make([]string, 0)
+	}
+
+	arr, err := anyToStringArray(redisVal.value)
+	//When key holds a value that is not a list, an error is returned.
+	if err != nil {
+		return fmt.Sprintf("%s%s%s", resp.Errors, resp.NotAListErr, resp.CRLF)
+	}
+
+	// Insert all the specified values at the head of the list stored at key.
+	for i := 2; i < len(args); i++ {
+		head := []string{args[i]}
+		arr = append(head, arr...)
+	}
+
+	redisVal.value = arr
+	s.dict[key] = redisVal
+	return fmt.Sprintf("%s%d%s", resp.Integers, len(arr), resp.CRLF)
+}
+
+// Insert all the specified values at the end of the list stored at key.
+// Returns Integer reply: the length of the list after the push operations.
+func (s *Server) handleRPush(args []string) string {
+	key := args[1]
+	redisVal, exists := s.dict[key]
+	//If key does not exist, it is created as empty list
+	if !exists {
+		redisVal.value = make([]string, 0)
+	}
+
+	arr, err := anyToStringArray(redisVal.value)
+	//When key holds a value that is not a list, an error is returned.
+	if err != nil {
+		return fmt.Sprintf("%s%s%s", resp.Errors, resp.NotAListErr, resp.CRLF)
+	}
+
+	for i := 2; i < len(args); i++ {
+		arr = append(arr, args[i])
+	}
+
+	redisVal.value = arr
+	s.dict[key] = redisVal
+	return fmt.Sprintf("%s%d%s", resp.Integers, len(arr), resp.CRLF)
 }
 
 // Return Integer reply: the value of key after the increment or decrement
@@ -147,7 +204,7 @@ func (s *Server) handleIncrDecr(args []string, increment bool) string {
 
 	redisVal, _ := s.dict[key]
 	// An error is returned if the key contains a value of the wrong type or contains a string that can not be represented as integer
-	val, err := strconv.ParseInt(redisVal.value, 10, 64)
+	val, err := strconv.ParseInt(anyToString(redisVal.value), 10, 64)
 	if err != nil {
 		return fmt.Sprintf("%s%s%s", resp.Errors, resp.IncrErr, resp.CRLF)
 	}
@@ -177,7 +234,7 @@ func (s *Server) handleIncr(args []string) string {
 
 	redisVal, _ := s.dict[key]
 	// An error is returned if the key contains a value of the wrong type or contains a string that can not be represented as integer
-	val, err := strconv.ParseInt(redisVal.value, 10, 64)
+	val, err := strconv.ParseInt(anyToString(redisVal.value), 10, 64)
 	if err != nil {
 		return fmt.Sprintf("%s%s%s", resp.Errors, resp.IncrErr, resp.CRLF)
 	}
@@ -230,7 +287,7 @@ func (s *Server) handleSet(args []string) (string, error) {
 	s.mu.Unlock()
 	if ok {
 		sb := strings.Builder{}
-		resp.WriteBulkString(oldValue.value, &sb)
+		resp.WriteBulkString(anyToString(oldValue.value), &sb)
 		return sb.String(), nil // if old value is present we return it
 	} else {
 		return resp.OK, nil
@@ -275,7 +332,7 @@ func (s *Server) handleGet(args []string) (string, error) {
 	}
 
 	sb := strings.Builder{}
-	resp.WriteBulkString(val.value, &sb)
+	resp.WriteBulkString(anyToString(val.value), &sb)
 	return sb.String(), nil
 
 }
@@ -294,6 +351,16 @@ func anyToStringArray(value any) ([]string, error) {
 		result = append(result, elem)
 	}
 	return result, nil
+}
+
+// helper method to convert an any value to a array
+func anyToString(value any) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	default:
+		return ""
+	}
 }
 
 func isValidExpiration(exp Expiration) bool {

@@ -4,6 +4,7 @@ import (
 	"ccwc/redis_server"
 	"ccwc/redis_server/resp"
 	"net"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -161,6 +162,38 @@ func TestServer_Incr_Decr(t *testing.T) {
 			}
 		} else {
 			if got != tt.want {
+				t.Errorf("got %q, want %q", err, tt.want)
+			}
+		}
+	}
+}
+
+func TestServer_RPush_LPush(t *testing.T) {
+	send("SET one 1")
+	tests := []struct {
+		cmd  string
+		want any
+	}{
+		{"RPUSH mylist lol", 1},
+		{"RPUSH mylist 2", 2},
+		{"RPUSH one 3", resp.NotAListErr},
+		{"LPUSH mylist 3", 3},
+		{"LPUSH mylist 4", 4},
+	}
+
+	for _, tt := range tests {
+		got, err := send(tt.cmd)
+		if err != nil {
+			switch tt.want.(type) {
+			// case when expecting an error
+			case error:
+				wantErr := tt.want.(error)
+				if err.Error() != wantErr.Error() {
+					t.Errorf("got %q, want %q", err, tt.want)
+				}
+			}
+		} else {
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("got %q, want %q", err, tt.want)
 			}
 		}
