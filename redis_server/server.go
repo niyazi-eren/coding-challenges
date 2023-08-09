@@ -277,30 +277,6 @@ func (s *Server) handleIncrDecr(args []string, increment bool) string {
 	return fmt.Sprintf("%s%d%s", resp.Integers, redisVal.value, resp.CRLF)
 }
 
-// Return Integer reply: the value of key after the increment
-func (s *Server) handleIncr(args []string) string {
-	key := args[1]
-	_, exists := s.dict[key]
-
-	// If the key does not exist, it is set to 0 before performing the operation
-	if !exists {
-		redisValue := RedisValue{value: strconv.Itoa(0)}
-		s.dict[key] = redisValue
-	}
-
-	redisVal, _ := s.dict[key]
-	// An error is returned if the key contains a value of the wrong type or contains a string that can not be represented as integer
-	val, err := strconv.ParseInt(anyToString(redisVal.value), 10, 64)
-	if err != nil {
-		return resp.WriteRespError(resp.IncrErr.Error())
-	}
-	// Increments the number stored at key
-	val++
-	redisVal.value = strconv.FormatInt(val, 10)
-	s.dict[key] = redisVal
-	return fmt.Sprintf("%s%s%s", resp.Integers, redisVal.value, resp.CRLF)
-}
-
 // returns the number of keys deleted as a resp integer
 func (s *Server) handleDelete(args []string) string {
 	count := 0
