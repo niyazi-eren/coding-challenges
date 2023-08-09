@@ -3,21 +3,13 @@ package server_test
 import (
 	"ccwc/redis_server"
 	"ccwc/redis_server/resp"
-	"fmt"
 	"net"
+	"reflect"
 	"testing"
 	"time"
 )
 
 var testPort = ":8888"
-
-func TestServer_Run(t *testing.T) {
-	conn, err := net.Dial("tcp", testPort)
-	if err != nil {
-		t.Error("could not connect to server: ", err)
-	}
-	defer conn.Close()
-}
 
 func TestServer_Set(t *testing.T) {
 	tests := []struct {
@@ -95,6 +87,143 @@ func TestServer_SetExpire(t *testing.T) {
 	}
 }
 
+func TestServer_Exists_Del(t *testing.T) {
+	_, err := send("SET name JOHN")
+	if err != nil {
+		t.Errorf(err.Error())
+	}
+
+	tests := []struct {
+		cmd  string
+		want any
+	}{
+		{"EXISTS fail", 0},
+		{"EXISTS fail name name", 2},
+		{"DEL name name", 1},
+		{"DEL fail", 0},
+		{"EXISTS name", 0},
+	}
+
+	for _, tt := range tests {
+		got, err := send(tt.cmd)
+		if err != nil {
+			t.Errorf(err.Error())
+		} else {
+			if got != tt.want {
+				t.Errorf("got %q, want %q", err, tt.want)
+			}
+		}
+	}
+}
+
+func TestServer_Incr_Decr(t *testing.T) {
+	_, err := send("SET one 1")
+	_, err = send("SET two two")
+	_, err = send("SET t1 123")
+	_, err = send("SET t2 123000000000000000000000000")
+	if err != nil {
+		t.Errorf(err.Error())
+	}
+
+	tests := []struct {
+		cmd  string
+		want any
+	}{
+		{"INCR one", 2},
+		{"INCR one", 3},
+		{"INCR zero", 1},
+		{"INCR zero", 2},
+		{"INCR two", resp.IncrErr},
+		{"DECR t1", 122},
+		{"DECR t0", -1},
+		{"DECR t0", -2},
+		{"INCR t0", -1},
+		{"DECR t2", resp.IncrErr},
+	}
+
+	for _, tt := range tests {
+		got, err := send(tt.cmd)
+		if err != nil {
+			switch tt.want.(type) {
+			// case when expecting an error
+			case error:
+				wantErr := tt.want.(error)
+				if err.Error() != wantErr.Error() {
+					t.Errorf("got %q, want %q", err, tt.want)
+				}
+			}
+		} else {
+			if got != tt.want {
+				t.Errorf("got %q, want %q", err, tt.want)
+			}
+		}
+	}
+}
+
+func TestServer_RPush_LPush(t *testing.T) {
+	send("SET one 1")
+	tests := []struct {
+		cmd  string
+		want any
+	}{
+		{"RPUSH mylist lol", 1},
+		{"RPUSH mylist 2", 2},
+		{"RPUSH one 3", resp.NotAListErr},
+		{"LPUSH mylist 3", 3},
+		{"LPUSH mylist 4", 4},
+	}
+
+	for _, tt := range tests {
+		got, err := send(tt.cmd)
+		if err != nil {
+			switch tt.want.(type) {
+			// case when expecting an error
+			case error:
+				wantErr := tt.want.(error)
+				if err.Error() != wantErr.Error() {
+					t.Errorf("got %q, want %q", err, tt.want)
+				}
+			}
+		} else {
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("got %q, want %q", err, tt.want)
+			}
+		}
+	}
+}
+
+func TestServer_SaveAndLoad(t *testing.T) {
+	tests := []struct {
+		cmd  string
+		want any
+	}{
+		// set db and save it to file
+		{"SET name JOHN", "OK"},
+		{"SET name2 JANE", "OK"},
+		{"SAVE", "OK"},
+		// delete local db and verify that it is deleted
+		{"DEL name", 1},
+		{"DEL name2", 1},
+		{"EXISTS name", 0},
+		{"EXISTS name2", 0},
+		// load db from file and verify that data is present
+		{"LOAD", "OK"},
+		{"EXISTS name", 1},
+		{"EXISTS name2", 1},
+	}
+
+	for _, tt := range tests {
+		got, err := send(tt.cmd)
+		if err != nil {
+			t.Errorf(err.Error())
+		}
+
+		if got != tt.want {
+			t.Errorf("for command %q, got %q, want %q", tt.cmd, got, tt.want)
+		}
+	}
+}
+
 // executed before every test
 func init() {
 	s := server.NewServer("8888")
@@ -123,7 +252,7 @@ func send(cmd string) (any, error) {
 
 	response, err := resp.Decode(buf)
 	if err != nil {
-		fmt.Println("error decoding: ", err.Error())
+		return nil, err
 	}
 	return response, nil
 }

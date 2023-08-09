@@ -3,6 +3,7 @@ package resp
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -25,6 +26,8 @@ var TermErr = errors.New("unexpected termination")
 var TokenErr = errors.New("unexpected token")
 var BytesLenDecodeErr = errors.New("error decoding bulk string length")
 var BytesLenExceededErr = errors.New("error the string size cannot be larger than 512MB")
+var IncrErr = errors.New("error the value is not an integer or out of range")
+var NotAListErr = errors.New("error the value is not a list")
 
 // Encode the command with the RESP protocol
 // a command is a RESP Array consisting of only Bulk Strings
@@ -55,6 +58,14 @@ func WriteBulkString(token string, sb *strings.Builder) {
 	sb.WriteString(CRLF)
 	sb.WriteString(token)
 	sb.WriteString(CRLF)
+}
+
+func WriteRespError(msg string) string {
+	return fmt.Sprintf("%s%s%s", Errors, msg, CRLF)
+}
+
+func WriteRespInt(value int) string {
+	return fmt.Sprintf("%s%d%s", Integers, value, CRLF)
 }
 
 func Decode(value []byte) (any, error) {
