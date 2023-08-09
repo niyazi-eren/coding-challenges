@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bufio"
 	"ccwc/redis_server/resp"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -27,6 +29,8 @@ const (
 	DECR   = "DECR"
 	LPUSH  = "LPUSH"
 	RPUSH  = "RPUSH"
+	SAVE   = "SAVE"
+	LOAD   = "LOAD"
 )
 
 const (
@@ -131,13 +135,66 @@ func (s *Server) handleRequest(conn net.Conn) {
 		reply = s.handleRPush(reqArgs)
 	case LPUSH:
 		reply = s.handleLPush(reqArgs)
+	case SAVE:
+		reply = s.handleSave()
+	case LOAD:
+		reply = s.handleLoad()
 	}
-
 	_, err = conn.Write([]byte(reply)) // write back the response
 	if err != nil {
 		fmt.Println("error writing response: " + reply)
 	}
 	conn.Close() // Close the connection when done
+}
+
+// The SAVE commands performs a synchronous save of the dataset
+// producing a point in time snapshot of all the data inside the Redis instance,
+// in the form of an RDB file.
+func (s *Server) handleSave() string {
+	file, err := os.Create("snapshot.rdb")
+	if err != nil {
+		return resp.WriteRespError(err.Error())
+	}
+	defer file.Close()
+
+	// encode and write the data
+	for k, v := range s.dict {
+		value := v.value
+		data := k + ":" + anyToString(value) + "\n"
+		err = binary.Write(file, binary.LittleEndian, []byte(data))
+		if err != nil {
+			return resp.WriteRespError("error binary encoding")
+		}
+	}
+	return resp.OK
+}
+
+func (s *Server) handleLoad() string {
+	file, err := os.Open("snapshot.rdb")
+	if err != nil {
+		resp.WriteRespError(err.Error())
+	}
+	defer file.Close()
+
+	m := make(map[string]RedisValue)
+	reader := bufio.NewReader(file)
+	for {
+		// Read a chunk of data from the file
+		bytes, err := reader.ReadBytes('\n')
+		data := string(bytes)
+		if data == "" {
+			break
+		}
+		pair := strings.Split(data, ":")
+		key := pair[0]
+		value := pair[1]
+		m[key] = RedisValue{value: value}
+		if err != nil {
+			break // Break loop on end of file or error
+		}
+	}
+	s.dict = m
+	return resp.OK
 }
 
 // Returns Integer reply: the length of the list after the push operations.
@@ -152,7 +209,7 @@ func (s *Server) handleLPush(args []string) string {
 	arr, err := anyToStringArray(redisVal.value)
 	//When key holds a value that is not a list, an error is returned.
 	if err != nil {
-		return fmt.Sprintf("%s%s%s", resp.Errors, resp.NotAListErr, resp.CRLF)
+		resp.WriteRespError(resp.NotAListErr.Error())
 	}
 
 	// Insert all the specified values at the head of the list stored at key.
@@ -163,7 +220,7 @@ func (s *Server) handleLPush(args []string) string {
 
 	redisVal.value = arr
 	s.dict[key] = redisVal
-	return fmt.Sprintf("%s%d%s", resp.Integers, len(arr), resp.CRLF)
+	return resp.WriteRespInt(len(arr))
 }
 
 // Insert all the specified values at the end of the list stored at key.
@@ -179,7 +236,7 @@ func (s *Server) handleRPush(args []string) string {
 	arr, err := anyToStringArray(redisVal.value)
 	//When key holds a value that is not a list, an error is returned.
 	if err != nil {
-		return fmt.Sprintf("%s%s%s", resp.Errors, resp.NotAListErr, resp.CRLF)
+		resp.WriteRespError(resp.NotAListErr.Error())
 	}
 
 	for i := 2; i < len(args); i++ {
@@ -188,7 +245,7 @@ func (s *Server) handleRPush(args []string) string {
 
 	redisVal.value = arr
 	s.dict[key] = redisVal
-	return fmt.Sprintf("%s%d%s", resp.Integers, len(arr), resp.CRLF)
+	return resp.WriteRespInt(len(arr))
 }
 
 // Return Integer reply: the value of key after the increment or decrement
@@ -206,7 +263,7 @@ func (s *Server) handleIncrDecr(args []string, increment bool) string {
 	// An error is returned if the key contains a value of the wrong type or contains a string that can not be represented as integer
 	val, err := strconv.ParseInt(anyToString(redisVal.value), 10, 64)
 	if err != nil {
-		return fmt.Sprintf("%s%s%s", resp.Errors, resp.IncrErr, resp.CRLF)
+		return resp.WriteRespError(resp.IncrErr.Error())
 	}
 	// Increment or decrements the number stored at key
 	if increment {
@@ -217,8 +274,7 @@ func (s *Server) handleIncrDecr(args []string, increment bool) string {
 
 	redisVal.value = strconv.FormatInt(val, 10)
 	s.dict[key] = redisVal
-
-	return fmt.Sprintf("%s%s%s", resp.Integers, redisVal.value, resp.CRLF)
+	return fmt.Sprintf("%s%d%s", resp.Integers, redisVal.value, resp.CRLF)
 }
 
 // Return Integer reply: the value of key after the increment
@@ -236,13 +292,12 @@ func (s *Server) handleIncr(args []string) string {
 	// An error is returned if the key contains a value of the wrong type or contains a string that can not be represented as integer
 	val, err := strconv.ParseInt(anyToString(redisVal.value), 10, 64)
 	if err != nil {
-		return fmt.Sprintf("%s%s%s", resp.Errors, resp.IncrErr, resp.CRLF)
+		return resp.WriteRespError(resp.IncrErr.Error())
 	}
 	// Increments the number stored at key
 	val++
 	redisVal.value = strconv.FormatInt(val, 10)
 	s.dict[key] = redisVal
-
 	return fmt.Sprintf("%s%s%s", resp.Integers, redisVal.value, resp.CRLF)
 }
 
@@ -256,7 +311,7 @@ func (s *Server) handleDelete(args []string) string {
 			count++
 		}
 	}
-	return fmt.Sprintf("%s%d%s", resp.Integers, count, resp.CRLF)
+	return resp.WriteRespInt(count)
 }
 
 // returns the count of existing keys as a resp integer
@@ -267,7 +322,7 @@ func (s *Server) handleExists(args []string) string {
 			count++
 		}
 	}
-	return fmt.Sprintf("%s%d%s", resp.Integers, count, resp.CRLF)
+	return resp.WriteRespInt(count)
 }
 
 // returns simple string for OK

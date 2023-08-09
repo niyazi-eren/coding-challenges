@@ -3,6 +3,7 @@ package resp
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -57,6 +58,14 @@ func WriteBulkString(token string, sb *strings.Builder) {
 	sb.WriteString(CRLF)
 	sb.WriteString(token)
 	sb.WriteString(CRLF)
+}
+
+func WriteRespError(msg string) string {
+	return fmt.Sprintf("%s%s%s", Errors, msg, CRLF)
+}
+
+func WriteRespInt(value int) string {
+	return fmt.Sprintf("%s%d%s", Integers, value, CRLF)
 }
 
 func Decode(value []byte) (any, error) {

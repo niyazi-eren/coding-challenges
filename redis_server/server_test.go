@@ -11,14 +11,6 @@ import (
 
 var testPort = ":8888"
 
-func TestServer_Run(t *testing.T) {
-	conn, err := net.Dial("tcp", testPort)
-	if err != nil {
-		t.Error("could not connect to server: ", err)
-	}
-	defer conn.Close()
-}
-
 func TestServer_Set(t *testing.T) {
 	tests := []struct {
 		cmd  string
@@ -196,6 +188,38 @@ func TestServer_RPush_LPush(t *testing.T) {
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("got %q, want %q", err, tt.want)
 			}
+		}
+	}
+}
+
+func TestServer_SaveAndLoad(t *testing.T) {
+	tests := []struct {
+		cmd  string
+		want any
+	}{
+		// set db and save it to file
+		{"SET name JOHN", "OK"},
+		{"SET name2 JANE", "OK"},
+		{"SAVE", "OK"},
+		// delete local db and verify that it is deleted
+		{"DEL name", 1},
+		{"DEL name2", 1},
+		{"EXISTS name", 0},
+		{"EXISTS name2", 0},
+		// load db from file and verify that data is present
+		{"LOAD", "OK"},
+		{"EXISTS name", 1},
+		{"EXISTS name2", 1},
+	}
+
+	for _, tt := range tests {
+		got, err := send(tt.cmd)
+		if err != nil {
+			t.Errorf(err.Error())
+		}
+
+		if got != tt.want {
+			t.Errorf("for command %q, got %q, want %q", tt.cmd, got, tt.want)
 		}
 	}
 }
