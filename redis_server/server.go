@@ -122,7 +122,9 @@ func (s *Server) handleRequest(conn net.Conn) {
 	case DEL:
 		reply = s.handleDelete(reqArgs)
 	case INCR:
-		reply = s.handleIncr(reqArgs)
+		reply = s.handleIncrDecr(reqArgs, true)
+	case DECR:
+		reply = s.handleIncrDecr(reqArgs, false)
 	}
 
 	_, err = conn.Write([]byte(reply)) // write back the response
@@ -130,6 +132,36 @@ func (s *Server) handleRequest(conn net.Conn) {
 		fmt.Println("error writing response: " + reply)
 	}
 	conn.Close() // Close the connection when done
+}
+
+// Return Integer reply: the value of key after the increment or decrement
+func (s *Server) handleIncrDecr(args []string, increment bool) string {
+	key := args[1]
+	_, exists := s.dict[key]
+
+	// If the key does not exist, it is set to 0 before performing the operation
+	if !exists {
+		redisValue := RedisValue{value: strconv.Itoa(0)}
+		s.dict[key] = redisValue
+	}
+
+	redisVal, _ := s.dict[key]
+	// An error is returned if the key contains a value of the wrong type or contains a string that can not be represented as integer
+	val, err := strconv.ParseInt(redisVal.value, 10, 64)
+	if err != nil {
+		return fmt.Sprintf("%s%s%s", resp.Errors, resp.IncrErr, resp.CRLF)
+	}
+	// Increment or decrements the number stored at key
+	if increment {
+		val++
+	} else {
+		val--
+	}
+
+	redisVal.value = strconv.FormatInt(val, 10)
+	s.dict[key] = redisVal
+
+	return fmt.Sprintf("%s%s%s", resp.Integers, redisVal.value, resp.CRLF)
 }
 
 // Return Integer reply: the value of key after the increment
@@ -147,7 +179,7 @@ func (s *Server) handleIncr(args []string) string {
 	// An error is returned if the key contains a value of the wrong type or contains a string that can not be represented as integer
 	val, err := strconv.ParseInt(redisVal.value, 10, 64)
 	if err != nil {
-		return fmt.Sprintf("%s%s%s", resp.Errors, resp.IncrDecodingErr, resp.CRLF)
+		return fmt.Sprintf("%s%s%s", resp.Errors, resp.IncrErr, resp.CRLF)
 	}
 	// Increments the number stored at key
 	val++

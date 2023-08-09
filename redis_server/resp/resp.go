@@ -25,7 +25,7 @@ var TermErr = errors.New("unexpected termination")
 var TokenErr = errors.New("unexpected token")
 var BytesLenDecodeErr = errors.New("error decoding bulk string length")
 var BytesLenExceededErr = errors.New("error the string size cannot be larger than 512MB")
-var IncrDecodingErr = errors.New("error decoding the value to INCR")
+var IncrErr = errors.New("error the value is not an integer or out of range")
 
 // Encode the command with the RESP protocol
 // a command is a RESP Array consisting of only Bulk Strings

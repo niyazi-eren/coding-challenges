@@ -126,6 +126,8 @@ func TestServer_Exists_Del(t *testing.T) {
 func TestServer_Incr_Decr(t *testing.T) {
 	_, err := send("SET one 1")
 	_, err = send("SET two two")
+	_, err = send("SET t1 123")
+	_, err = send("SET t2 123000000000000000000000000")
 	if err != nil {
 		t.Errorf(err.Error())
 	}
@@ -138,7 +140,12 @@ func TestServer_Incr_Decr(t *testing.T) {
 		{"INCR one", 3},
 		{"INCR zero", 1},
 		{"INCR zero", 2},
-		{"INCR two", resp.IncrDecodingErr},
+		{"INCR two", resp.IncrErr},
+		{"DECR t1", 122},
+		{"DECR t0", -1},
+		{"DECR t0", -2},
+		{"INCR t0", -1},
+		{"DECR t2", resp.IncrErr},
 	}
 
 	for _, tt := range tests {
