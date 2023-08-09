@@ -3,7 +3,6 @@ package server_test
 import (
 	"ccwc/redis_server"
 	"ccwc/redis_server/resp"
-	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -124,6 +123,43 @@ func TestServer_Exists_Del(t *testing.T) {
 	}
 }
 
+func TestServer_Incr_Decr(t *testing.T) {
+	_, err := send("SET one 1")
+	_, err = send("SET two two")
+	if err != nil {
+		t.Errorf(err.Error())
+	}
+
+	tests := []struct {
+		cmd  string
+		want any
+	}{
+		{"INCR one", 2},
+		{"INCR one", 3},
+		{"INCR zero", 1},
+		{"INCR zero", 2},
+		{"INCR two", resp.IncrDecodingErr},
+	}
+
+	for _, tt := range tests {
+		got, err := send(tt.cmd)
+		if err != nil {
+			switch tt.want.(type) {
+			// case when expecting an error
+			case error:
+				wantErr := tt.want.(error)
+				if err.Error() != wantErr.Error() {
+					t.Errorf("got %q, want %q", err, tt.want)
+				}
+			}
+		} else {
+			if got != tt.want {
+				t.Errorf("got %q, want %q", err, tt.want)
+			}
+		}
+	}
+}
+
 // executed before every test
 func init() {
 	s := server.NewServer("8888")
@@ -152,7 +188,7 @@ func send(cmd string) (any, error) {
 
 	response, err := resp.Decode(buf)
 	if err != nil {
-		fmt.Println("error decoding: ", err.Error())
+		return nil, err
 	}
 	return response, nil
 }

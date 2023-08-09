@@ -23,6 +23,8 @@ const (
 	GET    = "GET"
 	EXISTS = "EXISTS"
 	DEL    = "DEL"
+	INCR   = "INCR"
+	DECR   = "DECR"
 )
 
 const (
@@ -119,6 +121,8 @@ func (s *Server) handleRequest(conn net.Conn) {
 		reply = s.handleExists(reqArgs)
 	case DEL:
 		reply = s.handleDelete(reqArgs)
+	case INCR:
+		reply = s.handleIncr(reqArgs)
 	}
 
 	_, err = conn.Write([]byte(reply)) // write back the response
@@ -126,6 +130,31 @@ func (s *Server) handleRequest(conn net.Conn) {
 		fmt.Println("error writing response: " + reply)
 	}
 	conn.Close() // Close the connection when done
+}
+
+// Return Integer reply: the value of key after the increment
+func (s *Server) handleIncr(args []string) string {
+	key := args[1]
+	_, exists := s.dict[key]
+
+	// If the key does not exist, it is set to 0 before performing the operation
+	if !exists {
+		redisValue := RedisValue{value: strconv.Itoa(0)}
+		s.dict[key] = redisValue
+	}
+
+	redisVal, _ := s.dict[key]
+	// An error is returned if the key contains a value of the wrong type or contains a string that can not be represented as integer
+	val, err := strconv.ParseInt(redisVal.value, 10, 64)
+	if err != nil {
+		return fmt.Sprintf("%s%s%s", resp.Errors, resp.IncrDecodingErr, resp.CRLF)
+	}
+	// Increments the number stored at key
+	val++
+	redisVal.value = strconv.FormatInt(val, 10)
+	s.dict[key] = redisVal
+
+	return fmt.Sprintf("%s%s%s", resp.Integers, redisVal.value, resp.CRLF)
 }
 
 // returns the number of keys deleted as a resp integer
