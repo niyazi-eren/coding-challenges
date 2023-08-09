@@ -1,13 +1,16 @@
-package main
+package server
 
 import (
 	"ccwc/redis_server/resp"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -20,8 +23,26 @@ const (
 	GET = "GET"
 )
 
+const (
+	EX   = "EX"   // seconds
+	PX   = "PX"   // ms
+	EXAT = "EXAT" // unix timeout seconds
+	PXAT = "PXAT" // unix timeout ms
+)
+
+type RedisValue struct {
+	value string
+	exp   Expiration
+}
+
+type Expiration struct {
+	time    string
+	option  string
+	timeout string
+}
+
 type Server struct {
-	dict map[string]string
+	dict map[string]RedisValue
 	mu   sync.Mutex
 	port string
 }
@@ -29,7 +50,7 @@ type Server struct {
 func NewServer(port string) *Server {
 	return &Server{
 		port: port,
-		dict: make(map[string]string),
+		dict: make(map[string]RedisValue),
 	}
 }
 
@@ -83,49 +104,89 @@ func (s *Server) handleRequest(conn net.Conn) {
 	var reply string
 	switch cmd {
 	case SET:
-		reply = s.handleSet(reqArgs)
+		reply, err = s.handleSet(reqArgs)
+		if err != nil {
+			panic(err)
+		}
 	case GET:
-		reply = s.handleGet(reqArgs)
+		reply, err = s.handleGet(reqArgs)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	_, err = conn.Write([]byte(reply)) // write back the response
 	if err != nil {
 		fmt.Println("error writing response: " + reply)
 	}
-	conn.Close() // Close the connection when  done
+	conn.Close() // Close the connection when done
 }
 
 // returns simple string for OK
 // returns bulk string for old value
-func (s *Server) handleSet(reqArgs []string) string {
+func (s *Server) handleSet(reqArgs []string) (string, error) {
 	key := reqArgs[1]
-	value := reqArgs[2]
+	redisValue := RedisValue{value: reqArgs[2]}
+
+	err := setExpiration(reqArgs, &redisValue)
+	if err != nil {
+		return "", err
+	}
+
 	s.mu.Lock()
 	oldValue, ok := s.dict[key]
-	s.dict[key] = value
+	s.dict[key] = redisValue
 	s.mu.Unlock()
 	if ok {
 		sb := strings.Builder{}
-		resp.WriteBulkString(oldValue, &sb)
-		return sb.String() // if old value is present we return it
+		resp.WriteBulkString(oldValue.value, &sb)
+		return sb.String(), nil // if old value is present we return it
 	} else {
-		return resp.OK
+		return resp.OK, nil
 	}
 }
 
+func setExpiration(reqArgs []string, redisValue *RedisValue) error {
+	if len(reqArgs) == 5 {
+		exp := Expiration{
+			option:  reqArgs[3],
+			timeout: reqArgs[4],
+			time:    strconv.FormatInt(time.Now().Unix(), 10),
+		}
+		if isValidExpiration(exp) {
+			redisValue.exp = exp
+		} else {
+			return errors.New("error, unexpected expiration: {opt:" + exp.option + ", timeout:" + exp.timeout + "}")
+		}
+	}
+	return nil
+}
+
 // bulk string reply
-func (s *Server) handleGet(reqArgs []string) string {
+func (s *Server) handleGet(reqArgs []string) (string, error) {
 	key := reqArgs[1]
 	s.mu.Lock()
 	val, ok := s.dict[key]
 	defer s.mu.Unlock()
 	if !ok {
-		return resp.NullBulkString
-	} else {
-		sb := strings.Builder{}
-		resp.WriteBulkString(val, &sb)
-		return sb.String()
+		return resp.NullBulkString, nil
 	}
+	// check if expired
+	if val.exp.timeout != "" {
+		expired, err := isExpired(val)
+		if err != nil {
+			return "", err
+		}
+		if expired {
+			delete(s.dict, key)
+			return resp.NullBulkString, nil
+		}
+	}
+
+	sb := strings.Builder{}
+	resp.WriteBulkString(val.value, &sb)
+	return sb.String(), nil
+
 }
 
 // helper method to convert an any value to a string array
@@ -142,4 +203,49 @@ func anyToStringArray(value any) ([]string, error) {
 		result = append(result, elem)
 	}
 	return result, nil
+}
+
+func isValidExpiration(exp Expiration) bool {
+	// Check if the option is valid
+	switch exp.option {
+	case EX, PX, EXAT, PXAT:
+		// Option is valid, check if the timeout is an integer
+		_, err := strconv.Atoi(exp.timeout)
+		return err == nil
+	default:
+		// Invalid option
+		return false
+	}
+}
+
+func isExpired(val RedisValue) (bool, error) {
+	timestamp, err := strconv.ParseInt(val.exp.time, 10, 64)
+	if err != nil {
+		return false, fmt.Errorf("error parsing timestamp: %s", err)
+	}
+
+	var expirationTime time.Time
+	switch val.exp.option {
+	case EX:
+		timeout, err := strconv.ParseInt(val.exp.timeout, 10, 64)
+		if err != nil {
+			return false, fmt.Errorf("error parsing timeout: %s", err)
+		}
+		expirationTime = time.Unix(timestamp, 0).Add(time.Duration(timeout) * time.Second)
+	case PX:
+		timeout, err := strconv.ParseInt(val.exp.timeout, 10, 64)
+		if err != nil {
+			return false, fmt.Errorf("error parsing timeout: %s", err)
+		}
+		expirationTime = time.Unix(timestamp, 0).Add(time.Duration(timeout) * time.Millisecond)
+	case EXAT:
+		expirationTime = time.Unix(timestamp, 0)
+	case PXAT:
+		expirationTime = time.Unix(0, timestamp*int64(time.Millisecond))
+	default:
+		return false, nil
+	}
+
+	now := time.Now().Local()
+	return now.After(expirationTime), nil
 }
