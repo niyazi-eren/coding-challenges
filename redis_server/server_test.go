@@ -1,10 +1,12 @@
-package main
+package server_test
 
 import (
+	"ccwc/redis_server"
 	"ccwc/redis_server/resp"
 	"fmt"
 	"net"
 	"testing"
+	"time"
 )
 
 var testPort = ":8888"
@@ -64,9 +66,38 @@ func TestServer_Get(t *testing.T) {
 	}
 }
 
+func TestServer_SetExpire(t *testing.T) {
+	_, err := send("SET name JOHN PX 10")
+	_, err = send("SET test TEST PX 3500")
+	if err != nil {
+		t.Errorf(err.Error())
+	}
+
+	testsGet := []struct {
+		cmd  string
+		want any
+	}{
+		{"GET name", nil},
+		{"GET test", "TEST"},
+	}
+
+	time.Sleep(time.Millisecond * 10)
+
+	for _, tt := range testsGet {
+		got, err := send(tt.cmd)
+		if err != nil {
+			t.Errorf(err.Error())
+		} else {
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		}
+	}
+}
+
 // executed before every test
 func init() {
-	s := NewServer("8888")
+	s := server.NewServer("8888")
 	go s.Run()
 }
 
